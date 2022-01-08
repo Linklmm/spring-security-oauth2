@@ -2,13 +2,11 @@ package com.lmm.springsecurityoauth2.config;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.config.annotation.configurers.ClientDetailsServiceConfigurer;
 import org.springframework.security.oauth2.config.annotation.web.configuration.AuthorizationServerConfigurerAdapter;
@@ -58,25 +56,20 @@ public class OAuth2ServerConfig {
         AuthenticationManager authenticationManager;
         @Autowired
         RedisConnectionFactory redisConnectionFactory;
-
-        @Bean
-        PasswordEncoder passwordEncoder() {
-            return new BCryptPasswordEncoder();
-        }
+        @Autowired
+        PasswordEncoder passwordEncoder;
 
         @Override
         public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
-            String finalPassword = passwordEncoder().encode("123456");
-            String finalSecret = passwordEncoder().encode("123456");
-            log.error("psw:{}", finalPassword);
-            log.error("secret:{}", finalSecret);
+            String finalPassword = "{bcrypt}" + passwordEncoder.encode("123456");
+            log.error("pwd:{}", finalPassword);
 
             clients.inMemory().withClient("client_1")
                     .resourceIds(DEMO_RESOURCE_ID)
                     .authorizedGrantTypes("client_credentials", "refresh_token")
                     .scopes("select")
                     .authorities("client")
-                    .secret(finalSecret)
+                    .secret(finalPassword)
                     .and().withClient("client_2")
                     .resourceIds(DEMO_RESOURCE_ID)
                     .authorizedGrantTypes("password", "refresh_token")
