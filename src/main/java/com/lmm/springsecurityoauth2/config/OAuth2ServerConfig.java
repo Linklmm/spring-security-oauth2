@@ -4,10 +4,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.oauth2.config.annotation.configurers.ClientDetailsServiceConfigurer;
 import org.springframework.security.oauth2.config.annotation.web.configuration.AuthorizationServerConfigurerAdapter;
 import org.springframework.security.oauth2.config.annotation.web.configuration.EnableAuthorizationServer;
@@ -25,69 +26,82 @@ import org.springframework.security.oauth2.provider.token.store.redis.RedisToken
 @Configuration
 @Slf4j
 public class OAuth2ServerConfig {
-    private static final String DEMO_RESOURCE_ID = "order";
 
-    @Configuration
-    @EnableResourceServer
-    protected static class ResourceServerConfiguration extends ResourceServerConfigurerAdapter {
-        @Override
-        public void configure(ResourceServerSecurityConfigurer resources) throws Exception {
-            resources.resourceId(DEMO_RESOURCE_ID).stateless(true);
-        }
+  private static final String DEMO_RESOURCE_ID = "order";
 
-        @Override
-        public void configure(HttpSecurity http) throws Exception {
-            http
-                    .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
-                    .and()
-                    .requestMatchers().anyRequest()
-                    .and()
-                    .anonymous()
-                    .and()
-                    .authorizeRequests()
-                    .antMatchers("/order/**").authenticated();
-        }
+  @Configuration
+  @EnableResourceServer
+  protected static class ResourceServerConfiguration extends ResourceServerConfigurerAdapter {
+
+    @Override
+    public void configure(ResourceServerSecurityConfigurer resources) throws Exception {
+      resources.resourceId(DEMO_RESOURCE_ID).stateless(true);
     }
 
-    @Configuration
-    @EnableAuthorizationServer
-    protected static class AuthorizationServerConfiguration extends AuthorizationServerConfigurerAdapter {
-        @Autowired
-        AuthenticationManager authenticationManager;
-        @Autowired
-        RedisConnectionFactory redisConnectionFactory;
-        @Autowired
-        PasswordEncoder passwordEncoder;
-
-        @Override
-        public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
-            String finalPassword = "{bcrypt}" + passwordEncoder.encode("123456");
-            log.error("pwd:{}", finalPassword);
-
-            clients.inMemory().withClient("client_1")
-                    .resourceIds(DEMO_RESOURCE_ID)
-                    .authorizedGrantTypes("client_credentials", "refresh_token")
-                    .scopes("select")
-                    .authorities("client")
-                    .secret(finalPassword)
-                    .and().withClient("client_2")
-                    .resourceIds(DEMO_RESOURCE_ID)
-                    .authorizedGrantTypes("password", "refresh_token")
-                    .scopes("select")
-                    .authorities("client")
-                    .secret(finalPassword);
-        }
-
-        @Override
-        public void configure(AuthorizationServerEndpointsConfigurer endpoints) throws Exception {
-            endpoints.tokenStore(new RedisTokenStore(redisConnectionFactory))
-                    .authenticationManager(authenticationManager);
-        }
-
-        @Override
-        public void configure(AuthorizationServerSecurityConfigurer security) throws Exception {
-            //允许表单认证
-            security.allowFormAuthenticationForClients();
-        }
+    @Override
+    public void configure(HttpSecurity http) throws Exception {
+      http
+          .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+          .and()
+          .requestMatchers().anyRequest()
+          .and()
+          .anonymous()
+          .and()
+          .authorizeRequests()
+          .antMatchers("/order/**").authenticated();
     }
+  }
+
+  @Configuration
+  @EnableAuthorizationServer
+  protected static class AuthorizationServerConfiguration extends
+      AuthorizationServerConfigurerAdapter {
+
+    @Autowired
+    AuthenticationManager authenticationManager;
+    @Autowired
+    RedisConnectionFactory redisConnectionFactory;
+    @Autowired
+    BCryptPasswordEncoder passwordEncoder;
+
+//     配置OAuth2的客户端相关信息
+    @Override
+    public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+      String finalPassword = passwordEncoder.encode("123456");
+      log.error("pwd:{}", finalPassword);
+
+      clients.inMemory().withClient("client_1")
+          .resourceIds(DEMO_RESOURCE_ID)
+          .authorizedGrantTypes("client_credentials", "refresh_token")
+          .scopes("select")
+          .authorities("oauth2")
+          .secret(finalPassword)
+          .and().withClient("client_2")
+          .resourceIds(DEMO_RESOURCE_ID)
+          .authorizedGrantTypes("password", "refresh_token")
+          .scopes("select")
+          .authorities("oauth2")
+          .secret(finalPassword);
+    }
+
+    /**
+     * 配置AuthorizationServerEndpointsConfigurer众多相关类，
+     * 包括配置身份认证器，配置认证方式，TokenStore，TokenGranter，OAuth2RequestFactory
+     * @param endpoints
+     * @throws Exception
+     */
+    @Override
+    public void configure(AuthorizationServerEndpointsConfigurer endpoints) throws Exception {
+      endpoints.tokenStore(new RedisTokenStore(redisConnectionFactory))
+          .authenticationManager(authenticationManager)
+          .allowedTokenEndpointRequestMethods(HttpMethod.GET, HttpMethod.POST);
+    }
+
+//    配置AuthorizationServer安全认证的相关信息，创建ClientCredentialsTokenEndpointFilter核心过滤器
+    @Override
+    public void configure(AuthorizationServerSecurityConfigurer security) throws Exception {
+      //允许表单认证
+      security.allowFormAuthenticationForClients();
+    }
+  }
 }
